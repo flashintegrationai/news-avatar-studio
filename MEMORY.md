@@ -13,8 +13,8 @@ Auto-loaded each session (first 200 lines). Index only — full content lives in
 Each agent maintains an isolated knowledge store.
 
 - project-architect, content-curator, script-writer, avatar-producer
-- video-editor, youtube-publisher, n8n-automation-engineer
-- supabase-engineer, qa-reviewer
+- video-editor, youtube-publisher, telegram-bot-manager
+- n8n-automation-engineer, supabase-engineer, qa-reviewer
 
 ## Rules of memory
 - **Read** at session open (use `resuming-session` skill)

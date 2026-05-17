@@ -1,39 +1,41 @@
 # Rule 02 — Local Development Rules
 
-## Development Is Local
-- Next.js app runs at `http://localhost:3000`
-- No local backend infrastructure to manage
+## No local web app
+There is no Next.js or frontend in this project. Telegram is the UI.
 
 ## Remote Services via Env Vars Only
 | Service | Connection |
 |---|---|
-| Supabase | `NEXT_PUBLIC_SUPABASE_URL` + keys |
+| Supabase | `SUPABASE_URL` + keys |
 | n8n | `N8N_BASE_URL` + `N8N_API_KEY` |
+| Telegram | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` + `TELEGRAM_WEBHOOK_SECRET` |
 | Hedra | `HEDRA_API_KEY` |
 | ElevenLabs | `ELEVENLABS_API_KEY` |
 | YouTube | OAuth refresh token |
+| OpenAI / Anthropic | API keys |
 
 ## Do NOT Install Locally
 - Docker — not needed
 - n8n — runs on VPS
 - Supabase — remote
 - PostgreSQL — using remote Supabase
-- FFmpeg — locally for testing OK, production runs on VPS
+- FFmpeg — runs inside n8n on VPS (Execute Command node)
 
 ## Env File
-- `cp .env.example apps/web/.env.local`
+- `cp .env.example .env.local`
 - Never commit `.env.local`
-- App fails fast on missing required vars
-
-## Running
-```bash
-cd apps/web
-npm install
-npm run dev
-```
+- App-less project — env mainly serves migration tooling and local scripts
 
 ## Supabase Migrations
 - Install Supabase CLI globally
 - `supabase link --project-ref <ref>` (one time)
 - `supabase migration new <name>`
 - `supabase db push` (ASK USER BEFORE applying to remote)
+
+## Editing workflows
+- All workflows defined in `n8n/workflows/*.json`
+- Use n8n MCP tools to create/update/validate
+- Never edit the JSON by hand in production — always go through MCP `update_workflow` or n8n UI
+
+## Local scripts
+Place utilities in `scripts/` (e.g., one-shot data fixers, Telegram webhook re-registration).

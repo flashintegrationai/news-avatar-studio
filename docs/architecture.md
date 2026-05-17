@@ -14,46 +14,50 @@
        │  ┌───────────┐ ┌──────────┐ ┌────────┐ ┌─────────┐  │
        │  │  Ingest   │→│  Curate  │→│ Script │→│  Render │  │
        │  └───────────┘ └──────────┘ └────────┘ └─────────┘  │
-       │         ┌────────────┐ ┌─────────┐                  │
-       │         │  Finalize  │→│ Publish │                  │
-       │         └────────────┘ └─────────┘                  │
-       └────┬───────────────────────────────────────┬────────┘
-            │                                       │
-            ▼                                       ▼
-       ┌─────────────────┐                  ┌──────────────────┐
-       │ Supabase shared │                  │  External APIs   │
-       │  (news_* tables)│                  │  Hedra, 11Labs,  │
-       │  + Storage      │                  │  OpenAI, YouTube │
-       └────────┬────────┘                  └──────────────────┘
-                │
-                ▼
-       ┌─────────────────────────────┐
-       │   Next.js Dashboard (web)   │
-       │  - /scripts/queue           │  ⏸ Script approval
-       │  - /videos/queue            │  ⏸ Video approval
-       │  - /publications            │   History
-       │  - /sources                 │   Source management
-       └─────────────────────────────┘
-                       ▲
-                       │
-                    [Owner]
+       │         ┌────────────┐ ┌─────────┐ ┌───────────┐    │
+       │         │  Finalize  │→│ Publish │ │  Approvals│    │
+       │         └────────────┘ └─────────┘ │  (webhook)│    │
+       │                                    └───────────┘    │
+       └────┬─────────────────┬─────────────────┬────────────┘
+            │                 │                 │
+            ▼                 ▼                 ▼
+       ┌──────────────┐ ┌──────────────┐ ┌────────────────┐
+       │  Supabase    │ │ External API │ │  Telegram Bot  │
+       │ (news_* + 8  │ │  Hedra, 11L, │ │  ⬅⬆ outgoing   │
+       │  buckets)    │ │ OpenAI, YT   │ │  ⬇⬅ callbacks  │
+       └──────────────┘ └──────────────┘ └───────┬────────┘
+                                                 │
+                                                 ▼
+                                            ┌─────────┐
+                                            │ Operator│
+                                            │ (phone) │
+                                            └─────────┘
 ```
 
 ## Components
 
-### Frontend (apps/web)
-Next.js 14 dashboard for approval queues, history, and configuration.
+### Telegram Bot (UI surface)
+The only operator interface. Sends:
+- Approval requests with inline keyboards (script, video)
+- Publication confirmations
+- Error alerts
+- Daily analytics summaries
+- Quota warnings
+
+Receives:
+- Button taps (callback_query)
+- Free-form messages for editing scripts (optional future feature)
 
 ### Backend (Supabase, shared VPS)
 - Postgres with `news_*` table namespace
 - RLS-enforced multi-tenancy with nexus
 - Storage buckets: `news-renders`, `news-final-videos`, `news-thumbnails`
-- Realtime for live dashboard updates
+- No Realtime subscriptions (Telegram replaces that need)
 
 ### Automation (n8n, shared VPS)
 - All workflows in folder `NEWS`
 - All credentials prefixed `news-`
-- Triggers: cron (ingest, curate, analytics), event (status changes), manual (republish)
+- Triggers: cron (ingest, curate, analytics), event (status changes), Telegram webhook (callbacks)
 
 ### External APIs
 - **OpenAI / Anthropic** — script generation + curation scoring + thumbnail (DALL-E) + subtitles (Whisper)
@@ -68,14 +72,15 @@ Runs inside n8n via Execute Command node. Concat + subtitles + audio normalizati
 
 ## Data Flow
 
-See `flow-map.md` for the step-by-step pipeline with approval points.
+See `flow-map.md` for the step-by-step pipeline with Telegram approval points.
 
 ## Security Boundaries
 
-- All client-side code uses `NEXT_PUBLIC_SUPABASE_ANON_KEY` (RLS-bound)
-- Service-role key only in Edge Functions / server route handlers
-- YouTube OAuth refresh token never reaches client
-- Webhook endpoints validate `X-Webhook-Secret`
+- Telegram bot token only in `news-telegram` credential and `TELEGRAM_BOT_TOKEN` env
+- Service-role Supabase key only in n8n credentials / Edge Functions
+- YouTube OAuth refresh token in `news-youtube` credential only
+- Telegram callbacks validated by `secret_token` header + sender ID whitelist
+- Webhook endpoints (n8n) validate `X-Webhook-Secret`
 
 ## Shared Infrastructure with Nexus
 

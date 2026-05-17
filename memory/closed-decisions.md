@@ -26,7 +26,7 @@ Format per entry:
 - **Reopen if:** Hedra API reliability drops or quality regresses below acceptable threshold
 
 ## 2026-05-17 — Full-auto trigger from RSS with 2 approval gates
-- **Decision:** System ingests, curates, generates script. Human approves script. System renders + edits. Human approves video. System publishes.
+- **Decision:** System ingests, curates, generates script. Operator approves script. System renders + edits. Operator approves video + confirms publish. System publishes.
 - **Why:** Balances automation with editorial control. Avoids irreversible mistakes on YouTube.
 - **Reopen if:** Approval bottleneck slows publishing below 2/week target
 
@@ -34,3 +34,9 @@ Format per entry:
 - **Decision:** Repo `news-avatar-studio` is public on github.com/flashintegrationai
 - **Why:** Owner preference; no proprietary business logic exposed
 - **Reopen if:** Secrets leak or proprietary editorial systems are added
+
+## 2026-05-17 — Telegram-only control surface (no web dashboard)
+- **Decision:** All operator interactions happen via Telegram bot with inline keyboards. No Next.js, no web admin, no `apps/` directory.
+- **Why:** Operator wanted mobile-first approvals. Removes whole frontend dev surface, simplifies architecture, faster iteration. Bot handles: script approval, video approval+publish, publish confirmation, error alerts, daily metrics, quota warnings.
+- **Implementation:** New agent `telegram-bot-manager`, skills `telegram-bot` + `telegram-approvals`, rule `08-telegram-rules.md` (replaces `08-ui-rules.md`), workflow `NEWS - Telegram Approvals` to handle callbacks
+- **Reopen if:** Multi-operator team needs concurrent workflows, or approval volume exceeds what Telegram UX comfortably handles

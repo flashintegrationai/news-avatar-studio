@@ -20,10 +20,9 @@
 - Never make assumptions about editorial/business logic — ask if unclear
 
 ## Code Quality
-- TypeScript strict, no `any` without justification
 - All Supabase queries respect RLS
-- All forms validate input with Zod
-- Comments explain *why*, not *what*
+- All Telegram callbacks validate sender + secret token
+- Code comments explain *why*, not *what*
 
 ## Shared Infrastructure
 - This project shares Supabase + n8n with nexus-crm

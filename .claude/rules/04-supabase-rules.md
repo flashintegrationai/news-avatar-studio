@@ -24,19 +24,10 @@ Service role bypasses all RLS — leaking it = full DB compromise.
 - Never raw SQL on prod except emergency with user approval
 
 ## Client Patterns
-```ts
-// Client component
-import { createClient } from '@/lib/supabase/client'
-const supabase = createClient()
-
-// Server component / route handler
-import { createServerSupabaseClient } from '@/lib/supabase/server'
-const supabase = createServerSupabaseClient()
-```
+All access happens server-side (n8n nodes and Edge Functions). There is no browser client. Use the n8n Supabase node with the `news-supabase` credential.
 
 ## Realtime
-- Subscribe on mount, unsubscribe on unmount
-- Use Realtime for: script approval queue, video approval queue, render progress
+Not used. Notifications go through the Telegram bot instead of Realtime subscriptions.
 
 ## Storage Buckets (all private, signed URLs only)
 - `news-renders` — Hedra render outputs (audio + video)
