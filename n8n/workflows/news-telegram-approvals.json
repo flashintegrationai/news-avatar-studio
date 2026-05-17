@@ -1,0 +1,201 @@
+{
+  "name": "NEWS - Telegram Approvals",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "news-telegram-approvals",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "news-telegram-approvals"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headerSecret = $input.first().json.headers['x-telegram-bot-api-secret-token'];\nconst expected = $env.TELEGRAM_WEBHOOK_SECRET;\nif (!expected || headerSecret !== expected) return [{ json: { unauthorized: true } }];\nconst body = $input.first().json.body || {};\nconst cb = body.callback_query;\nconst msg = body.message;\nconst ALLOWED = ($env.TELEGRAM_ALLOWED_USER_IDS || '7628124170').split(',').map(s => Number(s.trim()));\nconst senderId = cb ? cb.from.id : msg ? msg.from.id : null;\nif (!senderId || !ALLOWED.includes(senderId)) return [{ json: { unauthorized: true } }];\nif (cb) {\n  const parts = (cb.data || '').split(':');\n  return [{ json: { kind: 'callback', entity: parts[0]||null, entity_id: parts[1]||null, action: parts[2]||null, callback_query_id: cb.id, message_id: cb.message?.message_id, chat_id: cb.message?.chat?.id, user_id: cb.from.id } }];\n}\nif (msg) return [{ json: { kind: 'message', text: msg.text, chat_id: msg.chat.id, user_id: msg.from.id } }];\nreturn [{ json: { kind: 'ignore' } }];"
+      },
+      "id": "parse",
+      "name": "Parse + auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [{ "leftValue": "={{ $json.unauthorized }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }],
+          "combinator": "and"
+        }
+      },
+      "id": "if-unauth",
+      "name": "If unauthorized",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": { "respondWith": "text", "responseBody": "Unauthorized", "options": { "responseCode": 401 } },
+      "id": "respond-401",
+      "name": "Respond 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [{ "leftValue": "={{ $json.kind }}", "rightValue": "callback", "operator": { "type": "string", "operation": "equals" } }],
+          "combinator": "and"
+        }
+      },
+      "id": "if-callback",
+      "name": "If callback",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "news_approvals",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "entity_type", "fieldValue": "={{ $json.entity }}" },
+            { "fieldId": "entity_id", "fieldValue": "={{ $json.entity_id }}" },
+            { "fieldId": "action", "fieldValue": "={{ $json.action }}" },
+            { "fieldId": "approver_telegram_id", "fieldValue": "={{ $json.user_id }}" },
+            { "fieldId": "callback_query_id", "fieldValue": "={{ $json.callback_query_id }}" }
+          ]
+        }
+      },
+      "id": "log",
+      "name": "Log approval",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1120, 320],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" }, "conditions": [
+              { "leftValue": "={{ $('Parse + auth').item.json.entity + ':' + $('Parse + auth').item.json.action }}", "rightValue": "script:approve", "operator": { "type": "string", "operation": "equals" } }
+            ], "combinator": "and" }, "renameOutput": true, "outputKey": "voice" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" }, "conditions": [
+              { "leftValue": "={{ $('Parse + auth').item.json.entity + ':' + $('Parse + auth').item.json.action }}", "rightValue": "video:publish_now", "operator": { "type": "string", "operation": "equals" } }
+            ], "combinator": "and" }, "renameOutput": true, "outputKey": "publish" }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "route",
+      "name": "Route by action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1340, 320]
+    },
+    {
+      "parameters": {
+        "url": "https://n8n-automation.elitecleaningsurfaces.com/webhook/news-generate-voice",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "X-Webhook-Secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ script_id: $('Parse + auth').item.json.entity_id }) }}",
+        "options": {}
+      },
+      "id": "trigger-voice",
+      "name": "Trigger Voice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 220],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://n8n-automation.elitecleaningsurfaces.com/webhook/news-publish-youtube",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "X-Webhook-Secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ video_id: $('Parse + auth').item.json.entity_id }) }}",
+        "options": {}
+      },
+      "id": "trigger-publish",
+      "name": "Trigger Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 380],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Parse + auth').item.json.callback_query_id }}",
+        "results": "",
+        "additionalFields": { "text": "=✓ {{ $('Parse + auth').item.json.action }}" }
+      },
+      "id": "ack",
+      "name": "Ack callback",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1780, 320],
+      "credentials": { "telegramApi": { "id": "AgsIUzn5P9mxWgeT", "name": "Telegram account 2" } },
+      "continueOnFail": true
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ JSON.stringify({ ok: true }) }}" },
+      "id": "respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2000, 420]
+    }
+  ],
+  "connections": {
+    "Telegram Webhook": { "main": [[{ "node": "Parse + auth", "type": "main", "index": 0 }]] },
+    "Parse + auth": { "main": [[{ "node": "If unauthorized", "type": "main", "index": 0 }]] },
+    "If unauthorized": {
+      "main": [
+        [{ "node": "Respond 401", "type": "main", "index": 0 }],
+        [{ "node": "If callback", "type": "main", "index": 0 }]
+      ]
+    },
+    "If callback": {
+      "main": [
+        [{ "node": "Log approval", "type": "main", "index": 0 }],
+        [{ "node": "Respond OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "Log approval": { "main": [[{ "node": "Route by action", "type": "main", "index": 0 }]] },
+    "Route by action": {
+      "main": [
+        [{ "node": "Trigger Voice", "type": "main", "index": 0 }],
+        [{ "node": "Trigger Publish", "type": "main", "index": 0 }],
+        [{ "node": "Ack callback", "type": "main", "index": 0 }]
+      ]
+    },
+    "Trigger Voice": { "main": [[{ "node": "Ack callback", "type": "main", "index": 0 }]] },
+    "Trigger Publish": { "main": [[{ "node": "Ack callback", "type": "main", "index": 0 }]] },
+    "Ack callback": { "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataSuccessExecution": "all" }
+}

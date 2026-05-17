@@ -1,0 +1,136 @@
+{
+  "name": "NEWS - Render Avatar",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "news-render-avatar",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "news-render-avatar"
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($input.first().json.headers['x-webhook-secret'] !== $env.N8N_WEBHOOK_SECRET) throw new Error('Unauthorized');\nreturn [{ json: $input.first().json.body }];"
+      },
+      "id": "auth",
+      "name": "Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://ekcnriprnytzeqznbrmf.supabase.co/storage/v1/object/{{ $json.voice_storage_path }}",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+        ]},
+        "options": { "response": { "response": { "responseFormat": "file", "outputPropertyName": "audio" } } }
+      },
+      "id": "get-audio",
+      "name": "Get audio bytes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.hedra.com/web-app/public/assets",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "X-Api-Key", "value": "={{ $env.HEDRA_API_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: 'voice-' + $('Validate').item.json.script_id, type: 'audio' }) }}",
+        "options": {}
+      },
+      "id": "hedra-create-asset",
+      "name": "Hedra create audio asset",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hedra.com/web-app/public/assets/{{ $json.id }}/upload",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "X-Api-Key", "value": "={{ $env.HEDRA_API_KEY }}" }
+        ]},
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": { "parameters": [
+          { "name": "file", "value": "=", "parameterType": "formBinaryData", "inputDataFieldName": "audio" }
+        ]},
+        "options": {}
+      },
+      "id": "hedra-upload-asset",
+      "name": "Hedra upload audio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.hedra.com/web-app/public/generations",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "X-Api-Key", "value": "={{ $env.HEDRA_API_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'video', ai_model_id: $env.HEDRA_MODEL_ID, start_keyframe_id: $env.HEDRA_CHARACTER_ID, audio_id: $('Hedra create audio asset').item.json.id, generated_video_inputs: { text_prompt: 'Professional news anchor delivering news, neutral expression, slight movement', resolution: '720p', aspect_ratio: '16:9' } }) }}",
+        "options": {}
+      },
+      "id": "hedra-generate",
+      "name": "Hedra generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "news_renders",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "script_id", "fieldValue": "={{ $('Validate').item.json.script_id }}" },
+            { "fieldId": "kind", "fieldValue": "avatar_video" },
+            { "fieldId": "provider", "fieldValue": "hedra" },
+            { "fieldId": "external_id", "fieldValue": "={{ $json.id }}" },
+            { "fieldId": "status", "fieldValue": "processing" }
+          ]
+        }
+      },
+      "id": "log",
+      "name": "Log render",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Validate", "type": "main", "index": 0 }]] },
+    "Validate": { "main": [[{ "node": "Get audio bytes", "type": "main", "index": 0 }]] },
+    "Get audio bytes": { "main": [[{ "node": "Hedra create audio asset", "type": "main", "index": 0 }]] },
+    "Hedra create audio asset": { "main": [[{ "node": "Hedra upload audio", "type": "main", "index": 0 }]] },
+    "Hedra upload audio": { "main": [[{ "node": "Hedra generate", "type": "main", "index": 0 }]] },
+    "Hedra generate": { "main": [[{ "node": "Log render", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataSuccessExecution": "all" }
+}

@@ -1,0 +1,153 @@
+{
+  "name": "NEWS - Publish YouTube",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "news-publish-youtube",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "news-publish-youtube"
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($input.first().json.headers['x-webhook-secret'] !== $env.N8N_WEBHOOK_SECRET) throw new Error('Unauthorized');\nreturn [{ json: $input.first().json.body }];"
+      },
+      "id": "auth",
+      "name": "Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "news_videos",
+        "returnAll": false,
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $json.video_id }}" }
+          ]
+        }
+      },
+      "id": "get-video",
+      "name": "Get video row",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "url": "https://oauth2.googleapis.com/token",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": { "parameters": [
+          { "name": "client_id", "value": "={{ $env.YOUTUBE_CLIENT_ID }}" },
+          { "name": "client_secret", "value": "={{ $env.YOUTUBE_CLIENT_SECRET }}" },
+          { "name": "refresh_token", "value": "={{ $env.YOUTUBE_REFRESH_TOKEN }}" },
+          { "name": "grant_type", "value": "refresh_token" }
+        ]},
+        "options": {}
+      },
+      "id": "refresh-token",
+      "name": "Refresh access_token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://ekcnriprnytzeqznbrmf.supabase.co/storage/v1/object/{{ $('Get video row').item.json.storage_path }}",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+        ]},
+        "options": { "response": { "response": { "responseFormat": "file", "outputPropertyName": "video" } } }
+      },
+      "id": "get-video-bytes",
+      "name": "Get video bytes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "=Bearer {{ $('Refresh access_token').item.json.access_token }}" }
+        ]},
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": { "parameters": [
+          { "name": "metadata", "value": "={{ JSON.stringify({ snippet: { title: $('Get video row').item.json.title, description: $('Get video row').item.json.description, tags: JSON.parse($('Get video row').item.json.tags || '[]'), categoryId: '25', defaultLanguage: 'en' }, status: { privacyStatus: 'public', madeForKids: false } }) }}", "parameterType": "formData" },
+          { "name": "video", "value": "=", "parameterType": "formBinaryData", "inputDataFieldName": "video" }
+        ]},
+        "options": { "timeout": 600000 }
+      },
+      "id": "youtube-upload",
+      "name": "YouTube upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "news_publications",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "video_id", "fieldValue": "={{ $('Get video row').item.json.id }}" },
+            { "fieldId": "platform", "fieldValue": "youtube" },
+            { "fieldId": "external_id", "fieldValue": "={{ $json.id }}" },
+            { "fieldId": "url", "fieldValue": "=https://youtube.com/watch?v={{ $json.id }}" },
+            { "fieldId": "status", "fieldValue": "published" },
+            { "fieldId": "published_at", "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      },
+      "id": "log-pub",
+      "name": "Log publication",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=✅ *Published to YouTube*\n\n*Title:* {{ $('Get video row').item.json.title }}\n*URL:* https://youtube.com/watch?v={{ $('YouTube upload').item.json.id }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "notify",
+      "name": "Notify Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1780, 300],
+      "credentials": { "telegramApi": { "id": "AgsIUzn5P9mxWgeT", "name": "Telegram account 2" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Validate", "type": "main", "index": 0 }]] },
+    "Validate": { "main": [[{ "node": "Get video row", "type": "main", "index": 0 }]] },
+    "Get video row": { "main": [[{ "node": "Refresh access_token", "type": "main", "index": 0 }]] },
+    "Refresh access_token": { "main": [[{ "node": "Get video bytes", "type": "main", "index": 0 }]] },
+    "Get video bytes": { "main": [[{ "node": "YouTube upload", "type": "main", "index": 0 }]] },
+    "YouTube upload": { "main": [[{ "node": "Log publication", "type": "main", "index": 0 }]] },
+    "Log publication": { "main": [[{ "node": "Notify Telegram", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataSuccessExecution": "all" }
+}

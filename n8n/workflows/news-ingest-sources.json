@@ -1,0 +1,157 @@
+{
+  "name": "NEWS - Ingest Sources",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 3
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Every 3h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "news_sources",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            { "keyName": "is_active", "condition": "eq", "keyValue": "true" },
+            { "keyName": "type", "condition": "eq", "keyValue": "rss" }
+          ]
+        }
+      },
+      "id": "supabase-get-sources",
+      "name": "Get active RSS sources",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "QLeTcep8CYbXpdfG",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-batches",
+      "name": "Per source",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 30000,
+          "ignoreSSLIssues": true
+        }
+      },
+      "id": "rss-read",
+      "name": "Read RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst sourceId = $('Per source').item.json.id;\nconst items = $input.all();\nreturn items.map(it => {\n  const url = it.json.link || it.json.url;\n  if (!url) return null;\n  const url_hash = crypto.createHash('sha256').update(url).digest('hex');\n  const published = it.json.isoDate || it.json.pubDate || null;\n  return {\n    json: {\n      source_id: sourceId,\n      title: (it.json.title || '').slice(0, 500),\n      url,\n      url_hash,\n      body: it.json.contentSnippet || it.json.content || null,\n      author: it.json.creator || it.json.author || null,\n      published_at: published ? new Date(published).toISOString() : null,\n      status: 'pending'\n    }\n  };\n}).filter(Boolean);"
+      },
+      "id": "normalize",
+      "name": "Normalize items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "news_items",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "source_id", "fieldValue": "={{ $json.source_id }}" },
+            { "fieldId": "title", "fieldValue": "={{ $json.title }}" },
+            { "fieldId": "url", "fieldValue": "={{ $json.url }}" },
+            { "fieldId": "url_hash", "fieldValue": "={{ $json.url_hash }}" },
+            { "fieldId": "body", "fieldValue": "={{ $json.body }}" },
+            { "fieldId": "author", "fieldValue": "={{ $json.author }}" },
+            { "fieldId": "published_at", "fieldValue": "={{ $json.published_at }}" },
+            { "fieldId": "status", "fieldValue": "pending" }
+          ]
+        }
+      },
+      "id": "supabase-insert",
+      "name": "Insert news_items",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "QLeTcep8CYbXpdfG",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "news_sources",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $('Per source').item.json.id }}" }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "last_polled_at", "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      },
+      "id": "mark-polled",
+      "name": "Mark source polled",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "QLeTcep8CYbXpdfG",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 3h": { "main": [[{ "node": "Get active RSS sources", "type": "main", "index": 0 }]] },
+    "Get active RSS sources": { "main": [[{ "node": "Per source", "type": "main", "index": 0 }]] },
+    "Per source": { "main": [[{ "node": "Read RSS", "type": "main", "index": 0 }]] },
+    "Read RSS": { "main": [[{ "node": "Normalize items", "type": "main", "index": 0 }]] },
+    "Normalize items": { "main": [[{ "node": "Insert news_items", "type": "main", "index": 0 }]] },
+    "Insert news_items": { "main": [[{ "node": "Mark source polled", "type": "main", "index": 0 }]] },
+    "Mark source polled": { "main": [[{ "node": "Per source", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "errorWorkflow": ""
+  }
+}

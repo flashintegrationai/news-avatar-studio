@@ -1,0 +1,135 @@
+{
+  "name": "NEWS - Generate Script",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "news-generate-script",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "news-generate-script"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headerSecret = $input.first().json.headers['x-webhook-secret'];\nif (headerSecret !== $env.N8N_WEBHOOK_SECRET) {\n  throw new Error('Unauthorized');\n}\nreturn [{ json: $input.first().json.body }];"
+      },
+      "id": "auth",
+      "name": "Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "news_items",
+        "returnAll": false,
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $json.news_item_id }}" }
+          ]
+        }
+      },
+      "id": "get-item",
+      "name": "Get item",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "modelId": { "__rl": true, "value": "gpt-4o", "mode": "list" },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You write 2-minute news scripts for an AI-avatar YouTube channel. Output STRICT JSON: {\"title\":\"<=60 chars\",\"script\":\"~300 words\",\"description\":\"~150 words with source attribution\",\"tags\":[\"5-10 tags\"]}. Structure script as: Hook (5-10s), Context (20-30s), Key facts (50-70s, 3-5 bullets prose), Analysis (20-30s, neutral), Outro (5-10s). Tone: neutral, professional. NO clickbait. NO first-person opinion. Source-grounded only — never invent quotes."
+            },
+            {
+              "role": "user",
+              "content": "=Source title: {{ $json.title }}\nSource URL: {{ $json.url }}\nSource body: {{ ($json.body || '').slice(0, 2500) }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": { "temperature": 0.7, "maxTokens": 1500 }
+      },
+      "id": "llm",
+      "name": "Generate script",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [900, 300],
+      "credentials": { "openAiApi": { "id": "M3341jFgHIx31yx7", "name": "OpenAI account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.message?.content || $input.first().json;\nconst parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;\nconst item = $('Get item').first().json;\nreturn [{\n  json: {\n    news_item_id: item.id,\n    title: parsed.title,\n    script: parsed.script,\n    description: parsed.description,\n    tags: parsed.tags,\n    word_count: (parsed.script || '').split(/\\s+/).length,\n    status: 'pending_approval',\n    llm_model: 'gpt-4o',\n    llm_provider: 'openai'\n  }\n}];"
+      },
+      "id": "format",
+      "name": "Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "news_scripts",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "news_item_id", "fieldValue": "={{ $json.news_item_id }}" },
+            { "fieldId": "title", "fieldValue": "={{ $json.title }}" },
+            { "fieldId": "script", "fieldValue": "={{ $json.script }}" },
+            { "fieldId": "description", "fieldValue": "={{ $json.description }}" },
+            { "fieldId": "tags", "fieldValue": "={{ JSON.stringify($json.tags) }}" },
+            { "fieldId": "word_count", "fieldValue": "={{ $json.word_count }}" },
+            { "fieldId": "status", "fieldValue": "pending_approval" },
+            { "fieldId": "llm_model", "fieldValue": "gpt-4o" },
+            { "fieldId": "llm_provider", "fieldValue": "openai" }
+          ]
+        }
+      },
+      "id": "save",
+      "name": "Save news_scripts",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=📰 *New script ready for review*\n\n*Title:* {{ $('Format').item.json.title }}\n*Words:* {{ $('Format').item.json.word_count }}\n\n```\n{{ ($('Format').item.json.script || '').slice(0, 3000) }}\n```",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "reply_markup": "={{ JSON.stringify({ inline_keyboard: [[ { text: '✅ Approve', callback_data: 'script:' + $json.id + ':approve' }, { text: '❌ Reject', callback_data: 'script:' + $json.id + ':reject' } ]] }) }}"
+        }
+      },
+      "id": "telegram",
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1560, 300],
+      "credentials": { "telegramApi": { "id": "AgsIUzn5P9mxWgeT", "name": "Telegram account 2" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Validate", "type": "main", "index": 0 }]] },
+    "Validate": { "main": [[{ "node": "Get item", "type": "main", "index": 0 }]] },
+    "Get item": { "main": [[{ "node": "Generate script", "type": "main", "index": 0 }]] },
+    "Generate script": { "main": [[{ "node": "Format", "type": "main", "index": 0 }]] },
+    "Format": { "main": [[{ "node": "Save news_scripts", "type": "main", "index": 0 }]] },
+    "Save news_scripts": { "main": [[{ "node": "Send Telegram", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataSuccessExecution": "all" }
+}

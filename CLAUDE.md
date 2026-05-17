@@ -87,6 +87,7 @@ Permissions are declared in `.claude/settings.json` and per-agent frontmatter.
 | Skill | File | Purpose |
 |---|---|---|
 | Resuming Session | `.claude/skills/resuming-session/SKILL.md` | Read memory at session open |
+| Invoke Codex Agent | `.claude/skills/invoke-codex-agent/SKILL.md` | Delegate implementation to Codex CLI (see `docs/sops/invoke-codex.md`) |
 | Ingest News Sources | `.claude/skills/ingest-news-sources/SKILL.md` | Add/configure RSS or NewsAPI source |
 | Curate Top Stories | `.claude/skills/curate-top-stories/SKILL.md` | Score and select daily top stories |
 | Create News Script | `.claude/skills/create-news-script/SKILL.md` | LLM script generation |

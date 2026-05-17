@@ -1,0 +1,192 @@
+{
+  "name": "NEWS - Hedra Poll",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 1 }] }
+      },
+      "id": "trigger",
+      "name": "Every 1m",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "news_renders",
+        "returnAll": false,
+        "limit": 20,
+        "filters": {
+          "conditions": [
+            { "keyName": "status", "condition": "eq", "keyValue": "processing" },
+            { "keyName": "provider", "condition": "eq", "keyValue": "hedra" }
+          ]
+        }
+      },
+      "id": "get-processing",
+      "name": "Get processing renders",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    },
+    {
+      "parameters": { "batchSize": 1, "options": {} },
+      "id": "split",
+      "name": "Per render",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hedra.com/web-app/public/generations/{{ $json.external_id }}/status",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "X-Api-Key", "value": "={{ $env.HEDRA_API_KEY }}" }
+        ]},
+        "options": {}
+      },
+      "id": "check-status",
+      "name": "Check Hedra status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "leftValue": "={{ $json.status }}", "rightValue": "complete", "operator": { "type": "string", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-complete",
+      "name": "If complete",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url || $json.video_url || $json.output_url }}",
+        "method": "GET",
+        "options": { "response": { "response": { "responseFormat": "file", "outputPropertyName": "video" } } }
+      },
+      "id": "download",
+      "name": "Download video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 220]
+    },
+    {
+      "parameters": {
+        "url": "=https://ekcnriprnytzeqznbrmf.supabase.co/storage/v1/object/news-renders/avatar/{{ $('Per render').item.json.script_id }}.mp4",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Content-Type", "value": "video/mp4" },
+          { "name": "x-upsert", "value": "true" }
+        ]},
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "video",
+        "options": {}
+      },
+      "id": "upload",
+      "name": "Upload to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 220]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "news_renders",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $('Per render').item.json.id }}" }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "status", "fieldValue": "ready" },
+            { "fieldId": "storage_path", "fieldValue": "=news-renders/avatar/{{ $('Per render').item.json.script_id }}.mp4" }
+          ]
+        }
+      },
+      "id": "mark-ready",
+      "name": "Mark render ready",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1780, 220],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "news_videos",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "script_id", "fieldValue": "={{ $('Per render').item.json.script_id }}" },
+            { "fieldId": "storage_path", "fieldValue": "=news-renders/avatar/{{ $('Per render').item.json.script_id }}.mp4" },
+            { "fieldId": "status", "fieldValue": "pending_approval" },
+            { "fieldId": "title", "fieldValue": "" },
+            { "fieldId": "description", "fieldValue": "" },
+            { "fieldId": "tags", "fieldValue": "[]" }
+          ]
+        }
+      },
+      "id": "create-video",
+      "name": "Create news_video",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2000, 220],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🎬 *Avatar video ready*\n\nScript ID: `{{ $('Per render').item.json.script_id }}`\n\nReview & approve for YouTube?",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "reply_markup": "={{ JSON.stringify({ inline_keyboard: [[ { text: '✅ Publish Now', callback_data: 'video:' + $json.id + ':publish_now' }, { text: '❌ Reject', callback_data: 'video:' + $json.id + ':reject' } ]] }) }}"
+        }
+      },
+      "id": "telegram",
+      "name": "Telegram approval",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2220, 220],
+      "credentials": { "telegramApi": { "id": "AgsIUzn5P9mxWgeT", "name": "Telegram account 2" } }
+    }
+  ],
+  "connections": {
+    "Every 1m": { "main": [[{ "node": "Get processing renders", "type": "main", "index": 0 }]] },
+    "Get processing renders": { "main": [[{ "node": "Per render", "type": "main", "index": 0 }]] },
+    "Per render": { "main": [[{ "node": "Check Hedra status", "type": "main", "index": 0 }]] },
+    "Check Hedra status": { "main": [[{ "node": "If complete", "type": "main", "index": 0 }]] },
+    "If complete": {
+      "main": [
+        [{ "node": "Download video", "type": "main", "index": 0 }],
+        [{ "node": "Per render", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download video": { "main": [[{ "node": "Upload to Supabase", "type": "main", "index": 0 }]] },
+    "Upload to Supabase": { "main": [[{ "node": "Mark render ready", "type": "main", "index": 0 }]] },
+    "Mark render ready": { "main": [[{ "node": "Create news_video", "type": "main", "index": 0 }]] },
+    "Create news_video": { "main": [[{ "node": "Telegram approval", "type": "main", "index": 0 }]] },
+    "Telegram approval": { "main": [[{ "node": "Per render", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataSuccessExecution": "all" }
+}

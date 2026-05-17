@@ -1,0 +1,141 @@
+{
+  "name": "NEWS - Curate Top Stories",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] }
+      },
+      "id": "trigger",
+      "name": "Every 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "news_items",
+        "returnAll": false,
+        "limit": 20,
+        "filters": {
+          "conditions": [
+            { "keyName": "status", "condition": "eq", "keyValue": "pending" }
+          ]
+        }
+      },
+      "id": "get-pending",
+      "name": "Get pending items",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "modelId": { "__rl": true, "value": "gpt-4o-mini", "mode": "list" },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You score news headlines for a general-news YouTube channel. Output STRICT JSON only: {\"score\":0-100,\"reason\":\"short\"}. Score considers: relevance to global audience, freshness, factual interest, avoiding clickbait. No quote characters inside reason."
+            },
+            {
+              "role": "user",
+              "content": "=Title: {{ $json.title }}\n\nBody: {{ ($json.body || '').slice(0, 800) }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": { "temperature": 0.2 }
+      },
+      "id": "score",
+      "name": "Score with LLM",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [680, 300],
+      "credentials": { "openAiApi": { "id": "M3341jFgHIx31yx7", "name": "OpenAI account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine each item with its score, then sort and split selected/skipped\nconst pending = $('Get pending items').all();\nconst scores = $input.all();\nconst combined = pending.map((p, i) => {\n  const s = scores[i]?.json?.message?.content || scores[i]?.json;\n  let score = 0, reason = '';\n  try {\n    const parsed = typeof s === 'string' ? JSON.parse(s) : s;\n    score = Number(parsed.score) || 0;\n    reason = String(parsed.reason || '').slice(0,200);\n  } catch (e) {}\n  return { id: p.json.id, title: p.json.title, score, reason };\n});\ncombined.sort((a,b) => b.score - a.score);\nconst TOP = 3;\nreturn combined.map((c, i) => ({\n  json: {\n    ...c,\n    status: i < TOP ? 'selected' : 'skipped',\n    curator_score: c.score,\n    curator_reason: c.reason,\n    skip_reason: i < TOP ? null : 'lower_score'\n  }\n}));"
+      },
+      "id": "rank",
+      "name": "Rank + tag",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "news_items",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $json.id }}" }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "status", "fieldValue": "={{ $json.status }}" },
+            { "fieldId": "curator_score", "fieldValue": "={{ $json.curator_score }}" },
+            { "fieldId": "curator_reason", "fieldValue": "={{ $json.curator_reason }}" },
+            { "fieldId": "skip_reason", "fieldValue": "={{ $json.skip_reason }}" }
+          ]
+        }
+      },
+      "id": "update-item",
+      "name": "Update news_items",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": { "supabaseApi": { "id": "QLeTcep8CYbXpdfG", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "leftValue": "={{ $json.status }}", "rightValue": "selected", "operator": { "type": "string", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-selected",
+      "name": "If selected",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://n8n-automation.elitecleaningsurfaces.com/webhook/news-generate-script' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "X-Webhook-Secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ news_item_id: $json.id, title: $json.title, score: $json.curator_score }) }}",
+        "options": {}
+      },
+      "id": "trigger-script",
+      "name": "Trigger Generate Script",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 220],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Every 6h": { "main": [[{ "node": "Get pending items", "type": "main", "index": 0 }]] },
+    "Get pending items": { "main": [[{ "node": "Score with LLM", "type": "main", "index": 0 }]] },
+    "Score with LLM": { "main": [[{ "node": "Rank + tag", "type": "main", "index": 0 }]] },
+    "Rank + tag": { "main": [[{ "node": "Update news_items", "type": "main", "index": 0 }]] },
+    "Update news_items": { "main": [[{ "node": "If selected", "type": "main", "index": 0 }]] },
+    "If selected": { "main": [[{ "node": "Trigger Generate Script", "type": "main", "index": 0 }], []] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataSuccessExecution": "all" }
+}
