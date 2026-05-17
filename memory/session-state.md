@@ -8,13 +8,14 @@ Bootstrap of the news-avatar-studio repository. Created base structure, memory a
 
 ## Next Steps
 
-1. Define Supabase migrations for `news_*` tables (news_sources, news_items, scripts, renders, videos, publications, approvals, audit_logs)
+1. ~~Supabase migrations~~ ✅ Done 2026-05-17 (8 news_* tables applied via MCP)
 2. Scaffold the Next.js app in `apps/web/`
-3. Create the first n8n workflow JSON: `NEWS - Ingest Sources`
-4. Provision Hedra account + Character-3 character ID
-5. Provision ElevenLabs account + voice ID
-6. Provision YouTube Data API OAuth credentials
+3. Create the first n8n workflow JSON: `NEWS - Ingest Sources` (cron + RSS parse + Supabase insert)
+4. Provision Hedra account + Character-3 character ID (USER)
+5. Provision ElevenLabs account + voice ID (USER)
+6. Provision YouTube Data API OAuth credentials (USER)
 7. Build the approval dashboard pages: `/scripts/queue` and `/videos/queue`
+8. Seed `news_sources` with initial RSS feeds (Reuters, AP, BBC)
 
 ## Active Blockers
 

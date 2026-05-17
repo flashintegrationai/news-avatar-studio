@@ -8,7 +8,7 @@ Integration status snapshot. Update when any service status changes.
 
 | Service | Status | Notes |
 |---|---|---|
-| Supabase (shared VPS) | 🟡 Pending | Need to apply `news_*` migrations |
+| Supabase (shared VPS) | 🟢 Working | 8 `news_*` tables applied 2026-05-17 (project ekcnriprnytzeqznbrmf) |
 | n8n (shared VPS) | 🟡 Pending | Folder `NEWS - *` to be created |
 | OpenAI / Anthropic | 🟡 Pending | Need API key |
 | ElevenLabs | 🔴 Not provisioned | Need account + voice_id |
