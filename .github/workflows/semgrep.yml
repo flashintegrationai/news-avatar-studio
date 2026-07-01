@@ -1,0 +1,32 @@
+name: semgrep
+
+# SAST (Static Application Security Testing). Corre en el contenedor oficial
+# de semgrep con rulesets de la comunidad (sin token). Postura: bloquear solo
+# en severidad ERROR (alta confianza) para evitar ruido; WARNING/INFO no fallan.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Semgrep scan (severidad ERROR)
+        run: |
+          semgrep scan \
+            --config p/security-audit \
+            --config p/python \
+            --config p/javascript \
+            --config p/typescript \
+            --severity ERROR \
+            --error \
+            --metrics off
