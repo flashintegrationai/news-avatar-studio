@@ -1,0 +1,27 @@
+name: trivy
+
+# Escaneo de vulnerabilidades en dependencias (lockfiles Python/Node) con Trivy.
+# Postura anti-ruido: bloquea solo en HIGH/CRITICAL CON FIX disponible
+# (--ignore-unfixed) -> CI accionable, no un muro de CVEs sin parche.
+# Instala el binario oficial en el runner (el contenedor trivy no trae node
+# para actions/checkout).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+
+      - name: Trivy fs scan (vuln HIGH/CRITICAL con fix)
+        run: trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
