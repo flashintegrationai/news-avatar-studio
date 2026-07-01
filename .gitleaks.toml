@@ -1,0 +1,24 @@
+# Configuración de Gitleaks para el laboratorio.
+# Extiende las reglas por defecto de gitleaks y añade allowlists de
+# falsos positivos conocidos del lab (placeholders, ejemplos).
+# Regla: NUNCA allowlistear por ruta un tipo de archivo entero (.md, .py) —
+# podría ocultar un secreto real. Solo placeholders explícitos.
+title = "lab gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Falsos positivos conocidos: placeholders y ejemplos"
+paths = [
+  '''\.env\.example$''',
+]
+regexes = [
+  # Placeholder oficial del lab para secretos: <see secrets.md: KEY_NAME>
+  '''<see secrets\.md:[^>]+>''',
+  # Marcadores genéricos usados en docs
+  '''<TOKEN>''',
+  '''<HEADER>''',
+  '''<cred>''',
+  '''YOUR_[A-Z_]+_HERE''',
+]
